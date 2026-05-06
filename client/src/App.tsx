@@ -62,6 +62,9 @@ function App() {
   const [trackLessonSubjectInput, setTrackLessonSubjectInput] = useState('')
   const [trackLessonHoursInput, setTrackLessonHoursInput] = useState('1')
   const [sectionTrackAssignments, setSectionTrackAssignments] = useState<Record<string, string[]>>({})
+  const [sectionSubjectTeacherAssignments, setSectionSubjectTeacherAssignments] = useState<
+    Record<string, Record<string, string>>
+  >({})
 
   const selectedTeacher = useMemo(
     () => teachers.find((teacher) => teacher.id === selectedTeacherId) ?? null,
@@ -224,6 +227,11 @@ function App() {
         delete next[sectionToRemove]
         return next
       })
+      setSectionSubjectTeacherAssignments((prev) => {
+        const next = { ...prev }
+        delete next[sectionToRemove]
+        return next
+      })
     }
   }
 
@@ -316,6 +324,40 @@ function App() {
     return trackIds
       .map((trackId) => tracks.find((track) => track.id === trackId)?.name)
       .filter((name): name is string => Boolean(name))
+  }
+
+  const getSubjectsForSection = (section: string) => {
+    const trackIds = sectionTrackAssignments[section] ?? []
+    if (!trackIds.length) return []
+    return trackIds
+      .flatMap((trackId) => tracks.find((track) => track.id === trackId)?.lessons ?? [])
+      .map((lesson) => lesson.subject.trim())
+      .filter((subject) => subject.length > 0)
+      .filter((subject, index, array) => array.indexOf(subject) === index)
+      .sort((a, b) => a.localeCompare(b))
+  }
+
+  const getTeachersForSubject = (subject: string) => {
+    const normalizedSubject = subject.trim().toLowerCase()
+    if (!normalizedSubject) return []
+    return teachers.filter((teacher) =>
+      teacher.subjects.some((teacherSubject) => teacherSubject.trim().toLowerCase() === normalizedSubject),
+    )
+  }
+
+  const assignTeacherForSectionSubject = (section: string, subject: string, teacherId: string) => {
+    setSectionSubjectTeacherAssignments((prev) => {
+      const currentSectionAssignments = prev[section] ?? {}
+      const nextSectionAssignments = { ...currentSectionAssignments }
+
+      if (teacherId) nextSectionAssignments[subject] = teacherId
+      else delete nextSectionAssignments[subject]
+
+      const next = { ...prev }
+      if (Object.keys(nextSectionAssignments).length > 0) next[section] = nextSectionAssignments
+      else delete next[section]
+      return next
+    })
   }
 
   const totalTrackHours =
@@ -562,6 +604,55 @@ function App() {
                     </li>
                   ))}
                 </ul>
+
+                <h4>Przypisanie nauczyciela do przedmiotu i oddzialu</h4>
+                {selectedYear.sections.length === 0 && (
+                  <p className="empty">Dodaj najpierw oddzialy do tej klasy.</p>
+                )}
+                {selectedYear.sections.map((section) => {
+                  const sectionSubjects = getSubjectsForSection(section)
+                  if (!sectionSubjects.length) {
+                    return (
+                      <div key={`${section}-no-subjects`} className="card">
+                        <h4>Oddzial {section}</h4>
+                        <p className="empty">
+                          Brak przedmiotow. Przypisz kierunek/tag do oddzialu w zakladce "Kierunki / Tagi".
+                        </p>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div key={`${section}-subject-assignments`} className="card">
+                      <h4>Oddzial {section}</h4>
+                      <ul className="list compact">
+                        {sectionSubjects.map((subject) => {
+                          const availableTeachers = getTeachersForSubject(subject)
+                          const assignedTeacherId = sectionSubjectTeacherAssignments[section]?.[subject] ?? ''
+
+                          return (
+                            <li key={`${section}-${subject}`} className="row-between">
+                              <span>{subject}</span>
+                              <select
+                                value={assignedTeacherId}
+                                onChange={(event) =>
+                                  assignTeacherForSectionSubject(section, subject, event.target.value)
+                                }
+                              >
+                                <option value="">-- wybierz nauczyciela --</option>
+                                {availableTeachers.map((teacher) => (
+                                  <option key={teacher.id} value={teacher.id}>
+                                    {teacher.firstName} {teacher.lastName}
+                                  </option>
+                                ))}
+                              </select>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
